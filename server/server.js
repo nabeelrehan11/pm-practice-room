@@ -24,10 +24,10 @@ app.use('/api/stripe', stripeRoutes);
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Serve the frontend
-app.use(express.static(path.join(__dirname, '..', 'public')));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
-});
+app.use(express.static(path.join(__dirname, 'public')));
+   app.get('*', (req, res) => {
+     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+   });
 
 app.listen(PORT, () => {
   console.log(`PM Practice Room server running on port ${PORT}`);
