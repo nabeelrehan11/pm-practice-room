@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practice Room — PM Interview Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1C1F2E; --ink-2:#262B3D; --ink-3:#323850;
+    --paper:#ECE7DD; --text-light:#ECE7DD; --text-light-dim:#A7ACC0;
+    --text-dark:#201C16; --text-dark-dim:#6B6558;
+    --accent:#2F8F7A; --amber:#E8B23D; --rust:#C65D3B; --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ink);color:var(--text-light);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;display:flex;justify-content:center;padding:32px 16px 64px;}
+  .app{width:100%;max-width:680px;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-light-dim);display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}
+  .eyebrow .dot{color:var(--accent);}
+  h1{font-family:'Fraunces',serif;font-weight:500;font-size:clamp(28px,5vw,40px);line-height:1.1;margin:0 0 12px;}
+  .sub{color:var(--text-light-dim);font-size:15px;line-height:1.6;max-width:52ch;margin:0 0 28px;}
+  .card{background:var(--ink-2);border:1px solid var(--ink-3);border-radius:var(--radius);padding:28px;}
+  .card p{color:var(--text-light-dim);font-size:14px;line-height:1.7;margin:0 0 20px;}
+  button{font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:14px;border:none;border-radius:9px;padding:13px 22px;cursor:pointer;}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-primary{background:var(--accent);color:#0D211C;}
+  .btn-ghost{background:transparent;color:var(--text-light);border:1px solid var(--ink-3);}
+  input{width:100%;background:var(--ink);border:1px solid var(--ink-3);border-radius:9px;color:var(--text-light);font-family:'IBM Plex Sans',sans-serif;font-size:14.5px;padding:12px 14px;margin-bottom:12px;}
+  input:focus{outline:none;border-color:var(--accent);}
+  .transcript{display:flex;flex-direction:column;gap:14px;margin-bottom:20px;}
+  .bubble{border-radius:var(--radius);padding:16px 18px;font-size:14.5px;line-height:1.6;}
+  .bubble.ai{background:var(--ink-2);border-left:3px solid var(--accent);}
+  .bubble.user{background:var(--paper);color:var(--text-dark);margin-left:14%;}
+  .tag{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:8px;}
+  .bubble.ai .tag{color:var(--accent);}
+  .bubble.user .tag{color:var(--text-dark-dim);}
+  .thinking{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-light-dim);}
+  textarea{width:100%;background:var(--ink-2);border:1px solid var(--ink-3);border-radius:var(--radius);color:var(--text-light);font-family:'IBM Plex Sans',sans-serif;font-size:14.5px;line-height:1.6;padding:14px 16px;resize:vertical;min-height:100px;}
+  textarea:focus{outline:none;border-color:var(--accent);}
+  .input-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:10px;}
+  .rubric-row{margin-bottom:14px;}
+  .rubric-label{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-light-dim);margin-bottom:6px;}
+  .rubric-track{background:var(--ink);border-radius:6px;height:8px;overflow:hidden;}
+  .rubric-fill{height:100%;border-radius:6px;}
+  .rubric-fill.low{background:var(--rust);} .rubric-fill.mid{background:var(--amber);} .rubric-fill.high{background:var(--accent);}
+  .improvement{border-left:3px solid var(--amber);padding:12px 16px;background:rgba(232,178,61,.08);border-radius:0 8px 8px 0;}
+  .error-box{background:rgba(198,93,59,.12);border:1px solid var(--rust);border-radius:10px;padding:14px 16px;font-size:13.5px;margin-bottom:16px;}
+  .footer-actions{display:flex;gap:10px;margin-top:22px;}
+  a.link{color:var(--accent);cursor:pointer;text-decoration:underline;}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script>
+const state = { view:'loading', user:null, category:null, conversation:[], feedback:null, error:'', loadingLabel:'' };
+const CATEGORY_LABELS = { product_sense:'Product Sense', execution:'Execution & Metrics', strategy:'Strategy', behavioral:'Behavioral' };
+const CATEGORY_BLURBS = {
+  product_sense:'Design or improve a product for a given set of users.',
+  execution:'Diagnose a metric drop or define success metrics for a launch.',
+  strategy:'Think through market entry, competitive positioning, or long-term direction.',
+  behavioral:'Tell a real story from your experience, structured and probed like a real interview.'
+};
+
+async function api(path, opts={}){
+  const res = await fetch(path, {credentials:'include', headers:{'Content-Type':'application/json'}, ...opts});
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok){ const err = new Error(data.error || 'Request failed'); err.status = res.status; err.data = data; throw err; }
+  return data;
+}
+
+async function loadMe(){
+  try{ state.user = await api('/api/auth/me'); state.view='category'; }
+  catch(e){ state.user = null; state.view='login'; }
+  render();
+}
+
+async function signup(email, password){
+  state.error='';
+  try{ await api('/api/auth/signup', {method:'POST', body:JSON.stringify({email,password})}); await loadMe(); }
+  catch(e){ state.error = e.data && e.data.error ? e.data.error : e.message; render(); }
+}
+async function login(email, password){
+  state.error='';
+  try{ await api('/api/auth/login', {method:'POST', body:JSON.stringify({email,password})}); await loadMe(); }
+  catch(e){ state.error = e.data && e.data.error ? e.data.error : e.message; render(); }
+}
+async function logout(){ await api('/api/auth/logout', {method:'POST'}); state.user=null; state.view='login'; render(); }
+
+function chooseCategory(key){ state.category=key; state.conversation=[]; state.feedback=null; state.error=''; state.view='start'; render(); }
+function backToCategories(){ state.view='category'; state.category=null; render(); }
+
+async function startInterview(){
+  state.view='loading'; state.loadingLabel='Preparing your case prompt...'; render();
+  try{
+    const data = await api('/api/interview/question', {method:'POST', body:JSON.stringify({category:state.category})});
+    state.conversation.push({role:'assistant', content:data.question});
+    state.view='interview';
+  }catch(e){
+    if(e.status===402){ state.view='paywall'; }
+    else{ state.error = e.data && e.data.error ? (e.data.message||e.data.error) : e.message; state.view='error'; }
+  }
+  render();
+}
+
+async function submitAnswer(){
+  const box = document.getElementById('answerBox');
+  const text = box.value.trim();
+  if(!text) return;
+  state.conversation.push({role:'user', content:text});
+  const userTurns = state.conversation.filter(m=>m.role==='user').length;
+  const isLast = userTurns >= 3;
+  state.view='loading';
+  state.loadingLabel = isLast ? 'Scoring your interview...' : 'Interviewer is thinking...';
+  render();
+  try{
+    if(isLast){
+      const data = await api('/api/interview/feedback', {method:'POST', body:JSON.stringify({category:state.category, conversation:state.conversation})});
+      state.feedback = data.feedback;
+      state.user.free_sessions_used = data.free_sessions_used;
+      state.user.is_subscribed = data.is_subscribed;
+      state.view='feedback';
+    }else{
+      const data = await api('/api/interview/followup', {method:'POST', body:JSON.stringify({category:state.category, conversation:state.conversation})});
+      state.conversation.push({role:'assistant', content:data.followup});
+      state.view='interview';
+    }
+  }catch(e){ state.error = e.data && e.data.error ? e.data.error : e.message; state.view='error'; }
+  render();
+}
+
+async function upgrade(){
+  try{
+    const data = await api('/api/stripe/create-checkout-session', {method:'POST'});
+    window.location.href = data.url;
+  }catch(e){ state.error = e.message; state.view='error'; render(); }
+}
+
+function scoreClass(n){ return n<=2?'low':n<=3?'mid':'high'; }
+function labelize(k){ return k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+function esc(str){ const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+
+function render(){
+  const app = document.getElementById('app');
+  let html = '';
+
+  if(state.view==='loading' && !state.user){ app.innerHTML = '<div class="eyebrow"><span>PRACTICE ROOM</span></div>'; return; }
+
+  if(state.view==='login' || state.view==='signup'){
+    const isSignup = state.view==='signup';
+    html += `<div class="eyebrow"><span>PRACTICE ROOM</span></div>
+    <h1>${isSignup? 'Create your account':'Welcome back'}</h1>
+    <p class="sub">Practice PM interviews with structured AI feedback — as many reps as you need.</p>
+    <div class="card">
+      ${state.error ? `<div class="error-box">${esc(state.error)}</div>` : ''}
+      <input id="email" type="email" placeholder="Email">
+      <input id="password" type="password" placeholder="Password (min 8 characters)">
+      <button class="btn-primary" onclick="handleAuthSubmit(${isSignup})">${isSignup?'Sign up':'Log in'}</button>
+      <p style="margin-top:16px;">${isSignup? 'Already have an account? ':"Don't have an account? "}<a class="link" onclick="toggleAuthView()">${isSignup?'Log in':'Sign up'}</a></p>
+    </div>`;
+  }
+
+  if(state.view==='category'){
+    html += `<div class="eyebrow"><span>PRACTICE ROOM <span class="dot">·</span> CHOOSE A ROUND</span><span>${esc(state.user.email)} <a class="link" onclick="logout()">Log out</a></span></div>
+    <h1>Pick your round.</h1>
+    <p class="sub">Real PM loops mix these four. Practice them separately to build reps faster. ${state.user.is_subscribed? '<b>Unlimited plan active.</b>' : `${state.user.free_sessions_used}/3 free sessions used this month.`}</p>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px;padding:16px;">`;
+    Object.keys(CATEGORY_LABELS).forEach(key=>{
+      html += `<button class="btn-ghost" style="text-align:left;padding:16px 18px;" onclick="chooseCategory('${key}')">
+        <div style="font-weight:600;font-size:14.5px;margin-bottom:4px;">${CATEGORY_LABELS[key]}</div>
+        <div style="font-weight:400;font-size:13px;color:var(--text-light-dim);">${CATEGORY_BLURBS[key]}</div>
+      </button>`;
+    });
+    html += `</div>`;
+  }
+
+  if(state.view==='start'){
+    html += `<div class="eyebrow"><span>PRACTICE ROOM <span class="dot">·</span> ${CATEGORY_LABELS[state.category].toUpperCase()}</span><span>${esc(state.user.email)}</span></div>
+    <h1>Think out loud.</h1>
+    <p class="sub">A short, structured ${CATEGORY_LABELS[state.category].toLowerCase()} mock interview. One case prompt, two follow-ups, then honest feedback.</p>
+    <div class="card">
+      <p>This is practice, not a course — a place to get reps in before the real thing. Answer like you're in the room.</p>
+      <button class="btn-primary" onclick="startInterview()">Start this round</button>
+      <button class="btn-ghost" style="margin-left:10px;" onclick="backToCategories()">Choose a different round</button>
+    </div>`;
+  }
+
+  if(state.view==='paywall'){
+    html += `<div class="eyebrow"><span>PRACTICE ROOM</span></div>
+    <h1>You've used your free sessions.</h1>
+    <p class="sub">Subscribe for unlimited practice across all four rounds.</p>
+    <div class="card">
+      <button class="btn-primary" onclick="upgrade()">Upgrade to unlimited</button>
+      <button class="btn-ghost" style="margin-left:10px;" onclick="backToCategories()">Back</button>
+    </div>`;
+  }
+
+  if(state.view==='interview' || state.view==='loading'){
+    html += `<div class="eyebrow"><span>PRACTICE ROOM <span class="dot">·</span> ${CATEGORY_LABELS[state.category].toUpperCase()}</span><span>${esc(state.user.email)}</span></div>
+    <div class="transcript">`;
+    state.conversation.forEach(m=>{
+      if(m.role==='assistant') html += `<div class="bubble ai"><span class="tag">Interviewer</span>${esc(m.content)}</div>`;
+      else html += `<div class="bubble user"><span class="tag">You</span>${esc(m.content)}</div>`;
+    });
+    html += `</div>`;
+    if(state.view==='loading'){
+      html += `<div class="thinking">${state.loadingLabel}</div>`;
+    }else{
+      html += `<textarea id="answerBox" placeholder="Type your answer..."></textarea>
+      <div class="input-actions">
+        <button class="btn-ghost" onclick="backToCategories()">End session</button>
+        <button class="btn-primary" onclick="submitAnswer()">Send answer</button>
+      </div>`;
+    }
+  }
+
+  if(state.view==='error'){
+    html += `<div class="eyebrow"><span>PRACTICE ROOM</span></div>
+    <div class="error-box">Something went wrong: ${esc(state.error)}</div>
+    <button class="btn-primary" onclick="backToCategories()">Back to rounds</button>`;
+  }
+
+  if(state.view==='feedback' && state.feedback){
+    const f = state.feedback;
+    html += `<div class="eyebrow"><span>PRACTICE ROOM <span class="dot">·</span> ${CATEGORY_LABELS[state.category].toUpperCase()}</span><span>${esc(state.user.email)}</span></div>
+    <div class="card"><h1 style="font-size:22px;">How that went</h1>`;
+    Object.entries(f.scores).forEach(([k,v])=>{
+      html += `<div class="rubric-row"><div class="rubric-label"><span>${labelize(k)}</span><span>${v}/5</span></div>
+      <div class="rubric-track"><div class="rubric-fill ${scoreClass(v)}" style="width:${v/5*100}%"></div></div></div>`;
+    });
+    html += `<div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--ink-3);">
+      <span class="tag" style="color:var(--text-light-dim);">Strengths</span><p style="color:var(--text-light);">${esc(f.strengths)}</p>
+      <div class="improvement"><span class="tag" style="color:var(--text-light-dim);">Try this next time</span><p style="margin:0;color:var(--text-light);">${esc(f.improvement)}</p></div>
+    </div>
+    <div class="footer-actions">
+      <button class="btn-primary" onclick="chooseCategory(state.category)">Practice this round again</button>
+      <button class="btn-ghost" onclick="backToCategories()">Try a different round</button>
+    </div></div>`;
+  }
+
+  app.innerHTML = html;
+  const box = document.getElementById('answerBox');
+  if(box) box.focus();
+}
+
+function toggleAuthView(){ state.view = state.view==='signup' ? 'login' : 'signup'; state.error=''; render(); }
+function handleAuthSubmit(isSignup){
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  if(isSignup) signup(email, password); else login(email, password);
+}
+
+loadMe();
+</script>
+</body>
+</html>
