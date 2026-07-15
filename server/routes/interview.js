@@ -80,14 +80,23 @@ router.post('/feedback', requireAuth, requireCategory, async (req, res) => {
     return res.status(400).json({ error: 'Conversation history is required.' });
   }
   try {
-    const raw = await callClaude(req.categoryCfg.sysFeedback, conversation);
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (parseErr) {
-      throw new Error('Could not parse feedback from the model. Please try again.');
-    }
+   const raw = await callClaude(req.categoryCfg.sysFeedback, conversation);
+      const cleaned = raw.replace(/```json|```/g, '').trim();
+      let parsed;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (parseErr) {
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (match) {
+          try {
+            parsed = JSON.parse(match[0]);
+          } catch (secondErr) {
+            throw new Error('Could not parse feedback from the model. Please try again.');
+          }
+        } else {
+          throw new Error('Could not parse feedback from the model. Please try again.');
+        }
+      }
 
     db.prepare(
       'INSERT INTO practice_sessions (user_id, category, scores, strengths, improvement) VALUES (?, ?, ?, ?, ?)'
